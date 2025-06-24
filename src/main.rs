@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use std::fmt::format;
 use std::fs;
 use std::io;
 use std::io::ErrorKind;
-use std::path::Path;
-use std::path::PathBuf;
 
 fn main() -> io::Result<()> {
     let gpus = get_gpus()?;
@@ -38,10 +35,11 @@ fn main() -> io::Result<()> {
         }
     }
 
-    let mut output: Vec<GPUProcesses> = gpus.iter()
-        .map(|(path,dev)| GPUProcesses { device_path: path, device: dev, processes: Vec::new()})
+    let mut output: Vec<GPUProcessInfo> = gpus.iter()
+        .map(|(path,dev)| GPUProcessInfo { device_path: path, device: dev, processes: Vec::new()})
         .collect();
 
+        
     for proc in &processes {
         for fd in &proc.fds {
             if let Some(gpu) = output.iter_mut().find(|gpu| *gpu.device_path == *fd) {
@@ -107,8 +105,8 @@ struct Process {
 }
 
 #[derive(Debug)]
-struct GPUProcesses<'a> {
-    device_path: &'a String,
+struct GPUProcessInfo<'a> {
+    device_path: &'a str,
     device: &'a Device,
     processes: Vec<&'a Process>
 }
