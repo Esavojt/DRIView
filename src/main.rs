@@ -4,6 +4,8 @@ use std::fs;
 use std::io;
 use std::io::ErrorKind;
 
+const PCIID_PATHS: [&str; 3] = ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", "pci.ids"];
+
 fn main() -> io::Result<()> {
     let gpus = get_gpus()?;
 
@@ -132,7 +134,23 @@ impl Device {
     }
 
     fn get_device_from_pciid(vendor: &str, device: &str, drm_path: String) -> io::Result<Self> {
-        let pci_ids_content = fs::read_to_string("pci.ids")?;
+
+        let mut pci_ids_content = String::new();
+        for path in PCIID_PATHS {
+            match fs::read_to_string(path) {
+                Ok(cont) => {
+                    pci_ids_content = cont;
+                    break;
+                },
+                Err(err) => if err.kind() != ErrorKind::NotFound {
+                    return Err(err);
+                }
+            }
+        }
+        if pci_ids_content.is_empty() {
+            println!("WARNING: pci.ids file not found, can't translate device id to vendor information");
+        }
+        //let pci_ids_content = fs::read_to_string("/usr/share/hwdata/pci.ids")?;
 
         let mut dev = Self {
             device_id: device.to_owned(),
