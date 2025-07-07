@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -35,27 +36,30 @@ fn main() -> io::Result<()> {
         }
     }
 
-    let mut output: Vec<GPUProcessInfo> = gpus.iter()
+    let mut gpu_procs: Vec<GPUProcessInfo> = gpus.iter()
         .map(|(path,dev)| GPUProcessInfo { device_path: path, device: dev, processes: Vec::new()})
         .collect();
 
         
     for proc in &processes {
         for fd in &proc.fds {
-            if let Some(gpu) = output.iter_mut().find(|gpu| *gpu.device_path == *fd) {
-                gpu.processes.push(proc);
+            for gpu in gpu_procs.iter_mut() {
+                if gpu.device.drm_path.contains(fd) {
+                    gpu.processes.push(proc);
+                    break;
+                }
             }
         }
     }
     
 
-    for out in &output {
-        println!("GPU {} {} ({}:{}) [{}] is used by:",
+    for out in &gpu_procs {
+        println!("\n{} {}\n({}:{}) [{}] is used by:",
             out.device.vendor_name.as_ref().unwrap_or(&"Unknown Manufacturer".to_owned()),
             out.device.device_name.as_ref().unwrap_or(&"Unknown Device".to_owned()),
             out.device.vendor_id,
             out.device.device_id,
-            out.device_path
+            out.device_path.replace("../", "")
         );
 
         for proc in &out.processes {
@@ -71,6 +75,7 @@ fn main() -> io::Result<()> {
 
 fn get_gpus() -> io::Result<HashMap<String, Device>> {
     let mut gpus: HashMap<String, Device> = HashMap::new();
+    // PCIID : Device
     for entry in fs::read_dir("/dev/dri")? {
         let entry = entry?;
         if !entry.metadata()?.is_dir() {
@@ -82,9 +87,18 @@ fn get_gpus() -> io::Result<HashMap<String, Device>> {
             let device = fs::read_to_string(format!("/sys/class/drm/{}/device/device", file_name))?;
             let device = device.trim();
             println!("Found GPU: {file_name} - {vendor}:{device}");
-            let dev = Device::new(vendor.strip_prefix("0x").unwrap_or(vendor), device.strip_prefix("0x").unwrap_or(device))?;
 
-            gpus.insert(format!("/dev/dri/{}", file_name), dev);
+            let pci_path = fs::read_link(format!("/sys/class/drm/{}/device", file_name))?;
+            let pci_path = pci_path.as_path().to_string_lossy();
+            let drm_path = format!("/dev/dri/{}", file_name);
+            match gpus.entry(pci_path.to_string()) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().drm_path.push(drm_path);
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(Device::new(vendor.strip_prefix("0x").unwrap_or(vendor), device.strip_prefix("0x").unwrap_or(device), drm_path)?);
+                }
+            }
         }
     }
     Ok(gpus)
@@ -96,6 +110,7 @@ struct Device {
     device_id: String,
     vendor_name: Option<String>,
     vendor_id: String,
+    drm_path: Vec<String>
 }
 #[derive(Debug)]
 struct Process {
@@ -112,18 +127,19 @@ struct GPUProcessInfo<'a> {
 }
 
 impl Device {
-    pub fn new(vendor: &str, device: &str) -> io::Result<Self> {
-        Self::get_device_from_pciid(vendor, device)
+    pub fn new(vendor: &str, device: &str, drm_path: String) -> io::Result<Self> {
+        Self::get_device_from_pciid(vendor, device, drm_path)
     }
 
-    fn get_device_from_pciid(vendor: &str, device: &str) -> io::Result<Self> {
+    fn get_device_from_pciid(vendor: &str, device: &str, drm_path: String) -> io::Result<Self> {
         let pci_ids_content = fs::read_to_string("pci.ids")?;
 
         let mut dev = Self {
             device_id: device.to_owned(),
             device_name: None,
             vendor_id: vendor.to_owned(),
-            vendor_name: None
+            vendor_name: None,
+            drm_path: vec![drm_path],
         };
 
         let mut lines = pci_ids_content.lines();
