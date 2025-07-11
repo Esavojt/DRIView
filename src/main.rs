@@ -23,7 +23,7 @@ fn main() -> io::Result<()> {
             out.device_path.replace("../", "")
         );
 
-        for proc in &out.processes {
+        for proc in out.processes.iter() {
             println!("({}) {}", proc.get_pid(), proc.get_name());
         }
     }
@@ -47,8 +47,8 @@ fn link_processes_to_gpu<'a>(
         .collect();
 
     for proc in procs.iter() {
-        for fd in proc.get_fds() {
-            for gpu in gpu_procs.iter_mut() {
+        for gpu in gpu_procs.iter_mut() {
+            for fd in proc.get_fds() {
                 if gpu.device.contains_path(fd) {
                     gpu.processes.push(proc);
                     break;

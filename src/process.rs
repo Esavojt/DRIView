@@ -5,6 +5,7 @@ use std::{
 
 pub fn get_processes() -> io::Result<Vec<Process>> {
     let mut pids: Vec<String> = Vec::new();
+    // Get running processes from procfs
     for entry in fs::read_dir("/proc")? {
         let entry = entry?;
         let file_name = entry.file_name();
@@ -18,7 +19,7 @@ pub fn get_processes() -> io::Result<Vec<Process>> {
     }
 
     let mut processes: Vec<Process> = Vec::with_capacity(pids.len());
-
+    // Create new process, if we can't read the file descriptor, skip it
     for pid in pids {
         match Process::new(pid) {
             Ok(proc) => {
@@ -56,7 +57,7 @@ impl Process {
                 Err(_) => continue,
             }
         }
-
+        // Get the process name
         let mut name = String::new();
         let proc_status = fs::read_to_string(format!("/proc/{}/status", pid))?;
 
